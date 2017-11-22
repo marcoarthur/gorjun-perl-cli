@@ -4,6 +4,8 @@ use Moose;
 use Mojo::UserAgent;
 use Data::Dumper;
 use GnuPG::Interface;
+use GnuPG::Handles;
+use IO::Handle;
 use Carp;
 
 my $DEBUG = 1;
@@ -42,7 +44,14 @@ my %ACTIONS = (
         path      => '/kurjun/rest/(:type)/download',
         has_param => 1,
         params    => [qw( id name token)],
-    }
+    },
+
+    authid => {
+        method    => 'get',
+        path      => '/kurjun/rest/auth/token?user=(:user)',
+        has_param => 1,
+        params    => [qw(user)],
+    },
 );
 
 has host => (
@@ -91,6 +100,13 @@ has key => (
     isa     => 'Str',
     lazy    => 1,
     builder => '_build_key',
+);
+
+has _gpg => (
+    is      => 'ro',
+    isa     => 'GnuPG::Interface',
+    lazy    => 1,
+    builder => '_build_gpg',
 );
 
 sub _build_key {
@@ -145,8 +161,46 @@ sub register {
 
 }
 
+sub get_authid {
+    my $self   = shift;
+    my %params = @_;
+    my $info   = $ACTIONS{'authid'};
+
+    # change user in url and delete this in params
+    $info->{path} =~ s/\(:user\)/$params{user}/mx;
+    delete $params{user};
+
+    my $res = $self->send(
+        method => $info->{method},
+        path   => $info->{path},
+    );
+
+    return $res;
+}
+
 sub token {
-    carp "Token: Not implemented yet";
+    my $self   = shift;
+    my %params = @_;
+
+    carp "Token in progress:" if $DEBUG;
+
+    my $info = $ACTIONS{'token'};
+
+    # execute get_authid first to get the author id from gorjun
+    my $authid = $self->get_authid( user => $params{user} );
+    croak "Could not get authid" unless $authid;
+
+    # sign a message with user key, passing passh phrase
+    croak "Without a message to encrypt" unless $params{message};
+    $params{message} = $self->encrypt_msg( $params{message} );
+
+    # send to gorjun
+    my $res = $self->send(
+        method => $info->{method},
+        path   => $info->{path},
+        form   => \%params,
+    );
+
     return 0;
 }
 
@@ -158,7 +212,7 @@ sub sign {
 sub upload {
     my $self   = shift;
     my %params = @_;
-    my $info = $ACTIONS{'upload'};
+    my $info   = $ACTIONS{'upload'};
 
     carp "Upload in progress" if $DEBUG;
 
@@ -181,14 +235,14 @@ sub send {
     my $self = shift;
     my %args = @_;
 
-    my $url    = $self->base_url . $args{'path'};
-    my $method = $args{'method'};
-    my $form   = $args{'form'};
+    my $url     = $self->base_url . $args{'path'};
+    my $method  = $args{'method'};
+    my $form    = $args{'form'};
+    my $headers = { 'Content-Type' => 'multipart/form-data' };
 
     my $tx =
         $form
-      ? $self->ua->$method( 
-          $url => { Accept => '*/*'} => form => $form )
+      ? $self->ua->$method( $url => $headers => form => $form )
       : $self->ua->$method($url);
 
     if ( $tx->success ) {
@@ -228,6 +282,68 @@ sub send_slow {
     #
     #    # Process transaction
     #    $tx = $ua->start($tx);
+}
+
+sub _build_gpg {
+    my $self = shift;
+
+    # init interface to gpg
+    my $gnupg = GnuPG::Interface->new();
+    $gnupg->options->hash_init(
+        armor            => 1,
+        meta_interactive => 0,
+    );
+
+    # set the passphrase so we don't need to type
+    $gnupg->passphrase( $self->gpg_pass_phrase );
+
+    return $gnupg;
+}
+
+# Setup the communicational channel for gpg interface
+sub _gpg_channels {
+    my $self   = shift;
+    my %params = @_;
+
+    my %ghandles;
+
+    for my $p (qw{ stdin stdout stderr }) {
+        $ghandles{$p} =
+          $params{$p} ? IO::Handle->new( $params{$p} ) : IO::Handle->new();
+    }
+
+    # set in/out/err
+    my $handles = GnuPG::Handles->new(%ghandles);
+
+    return $handles;
+}
+
+# Encrypt a message
+sub encrypt_msg {
+    my $self = shift;
+    my @msg  = @_;
+
+    # setup gpg interface: stdin, stdout and stderr
+    my $handles = $self->_gpg_channels;
+    my $in      = $handles->stdin;
+    my $out     = $handles->stdout;
+    my $err     = $handles->stderr;
+    my $pid     = $self->_gpg->clearsign( handles => $handles );
+
+    # send message to be crypted to the input
+    print $in @msg;
+    close $in;
+
+    # read crypted msg from the output
+    my @crypted = do { local $_; < $out > };
+    close $out;
+    close $err;
+
+    print Dumper( @crypted );
+
+    # return crypted msg
+    waitpid $pid, 0;
+    return join '\n', @msg;
 }
 
 1;

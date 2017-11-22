@@ -6,7 +6,7 @@ use lib qw(./lib);
 BEGIN {
     $ENV{EMAIL} = 'marco.prado.bs@gmail.com';
     $ENV{USER} = 'Marco';
-    $ENV{GPG_PASS} = 'my pass phrase';
+    $ENV{MOJO_USERAGENT_DEBUG} = 1;
 }
 
 sub create_file {
@@ -26,11 +26,11 @@ ok $g->register( name => 'Marco', key => $KEY ), "Register was done";
 
 ok my $token = $g->token( message => 'bla', user => 'Marco' ), "Token got";
 
-create_file($FILE);
-ok my $upload = $g->upload( type => 'raw', file => $FILE, token => $token ),
-  "Upload done";
-unlink $FILE;
+#create_file($FILE);
+#ok my $upload = $g->upload( type => 'raw', file => $FILE, token => $token ),
+#  "Upload done";
+#unlink $FILE;
 
-ok $g->sign( token => $token, signature => $upload ), 'Sign done';
+#ok $g->sign( token => $token, signature => $upload ), 'Sign done';
 
 done_testing();
