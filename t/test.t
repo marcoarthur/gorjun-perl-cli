@@ -1,12 +1,12 @@
 use strict;
 use warnings;
 use Test::More;
+use IO::All;
 use lib qw(./lib);
 
 BEGIN {
     $ENV{EMAIL} = 'marco.prado.bs@gmail.com';
-    $ENV{USER} = 'Marco';
-    $ENV{MOJO_USERAGENT_DEBUG} = 1;
+    $ENV{USER}  = 'Marco';
 }
 
 sub create_file {
@@ -24,9 +24,12 @@ chomp( my $KEY = `gpg --armor --export $ENV{EMAIL}` );
 
 ok $g->register( name => 'Marco', key => $KEY ), "Register was done";
 ok my $token = $g->token( user => 'Marco' ), "Token got";
+
+# test uploading
 create_file($FILE);
-ok my $upload = $g->upload( type => 'raw', file => $FILE, token => $token ),
-                "Upload done";
+ok my $upload =
+  $g->upload( type => 'raw', file => { file => $FILE }, token => $token ),
+  "Upload done";
 unlink $FILE;
 
 #ok $g->sign( token => $token, signature => $upload ), 'Sign done';

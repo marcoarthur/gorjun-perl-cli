@@ -6,6 +6,7 @@ use Data::Dumper;
 use GnuPG::Interface;
 use GnuPG::Handles;
 use IO::Handle;
+use List::Util qw(any);
 use Carp;
 
 my $DEBUG = 1;
@@ -221,6 +222,7 @@ sub upload {
     $info->{path} =~ s/\(:type\)/$params{type}/mx;
     delete $params{type};
 
+    # $DB::single = 1;
     my $res = $self->send(
         method => $info->{method},
         path   => $info->{path},
@@ -259,6 +261,7 @@ sub base_url {
     return $self->host . ':' . $self->port;
 }
 
+#TODO: fake slow connection
 sub send_slow {
 
     # Build a normal transaction
