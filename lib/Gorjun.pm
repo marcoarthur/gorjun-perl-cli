@@ -190,9 +190,8 @@ sub token {
     my $authid = $self->get_authid( user => $params{user} );
     croak "Could not get authid" unless $authid;
 
-    # sign a message with user key, passing passh phrase
-    croak "Without a message to encrypt" unless $params{message};
-    $params{message} = $self->encrypt_msg( $params{message} );
+    # sign message with user key, passing pass phrase
+    $params{message} = $self->encrypt_msg( $authid );
 
     # send to gorjun
     my $res = $self->send(
@@ -201,7 +200,7 @@ sub token {
         form   => \%params,
     );
 
-    return 0;
+    return $res;
 }
 
 sub sign {
@@ -222,13 +221,13 @@ sub upload {
     $info->{path} =~ s/\(:type\)/$params{type}/mx;
     delete $params{type};
 
-    $self->send(
+    my $res = $self->send(
         method => $info->{method},
         path   => $info->{path},
         form   => \%params
     );
 
-    return 0;
+    return $res;
 }
 
 sub send {
@@ -321,7 +320,7 @@ sub _gpg_channels {
 # Encrypt a message
 sub encrypt_msg {
     my $self = shift;
-    my @msg  = @_;
+    my @msgs  = @_;
 
     # setup gpg interface: stdin, stdout and stderr
     my $handles = $self->_gpg_channels;
@@ -331,19 +330,17 @@ sub encrypt_msg {
     my $pid     = $self->_gpg->clearsign( handles => $handles );
 
     # send message to be crypted to the input
-    print $in @msg;
+    print $in @msgs;
     close $in;
 
     # read crypted msg from the output
-    my @crypted = do { local $_; < $out > };
+    my $crypted = do { local $/; <$out> };
     close $out;
     close $err;
-
-    print Dumper( @crypted );
-
+ 
     # return crypted msg
     waitpid $pid, 0;
-    return join '\n', @msg;
+    return $crypted;
 }
 
 1;
