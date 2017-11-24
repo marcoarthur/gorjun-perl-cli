@@ -6,6 +6,7 @@ use Data::Dumper;
 use GnuPG::Interface;
 use GnuPG::Handles;
 use IO::Handle;
+use IO::All;
 use List::Util qw(any);
 use Carp;
 
@@ -113,29 +114,30 @@ has _gpg => (
 sub _build_key {
     my $self = shift;
 
-    # check if user has a key already
-    chomp( my $key = `gpg --armor --export $self->email` );
-    return $key if $key;
+    # user has a key already: use it
+    my $email = $self->email;
+    chomp( my $key = `gpg --armor --export $email` );
+    return $key if $key && $key ne "";
 
-    # don't have: create a key using his provided pass phrase
+    # don't have a key: create a key
+    my ( $name, $email, $pass ) =
+      ( $self->user, $self->email, $self->gpg_pass_phrase );
     my $instructions = <<EOI;
      %echo Generating a default key
      Key-Type: default
      Subkey-Type: default
-     Name-Real: $self->name
+     Name-Real: $name
      Name-Comment: with stupid passphrase
-     Name-Email: $self->email
+     Name-Email: $email
      Expire-Date: 0
-     Passphrase: $self->gpg_pass_phrase
+     Passphrase: $pass
      %commit
      %echo done
 EOI
 
     # save instructions to create a key
     my $temp_file = '/tmp/instructions';
-    open( my $fh, '>', $temp_file );
-    print $fh $instructions;
-    close $fh;
+    $instructions > io($temp_file);
 
     # generate and delete temp file
     `gpg --batch --generate-key $temp_file`;
@@ -153,6 +155,7 @@ sub register {
     carp "Register in progress:" if $DEBUG;
 
     my $info = $ACTIONS{'register'};
+    $params{key} = $self->key unless $params{key};
 
     $self->send(
         method => $info->{method},
@@ -192,7 +195,7 @@ sub token {
     croak "Could not get authid" unless $authid;
 
     # sign message with user key, passing pass phrase
-    $params{message} = $self->encrypt_msg( $authid );
+    $params{message} = $self->clearsign_msg( $authid );
 
     # send to gorjun
     my $res = $self->send(
@@ -294,6 +297,7 @@ sub _build_gpg {
     $gnupg->options->hash_init(
         armor            => 1,
         meta_interactive => 0,
+        batch            => 1,
     );
 
     # set the passphrase so we don't need to type
@@ -321,16 +325,19 @@ sub _gpg_channels {
 }
 
 # Encrypt a message
-sub encrypt_msg {
+sub clearsign_msg {
     my $self = shift;
-    my @msgs  = @_;
+    my @msgs = @_;
 
     # setup gpg interface: stdin, stdout and stderr
     my $handles = $self->_gpg_channels;
     my $in      = $handles->stdin;
     my $out     = $handles->stdout;
     my $err     = $handles->stderr;
-    my $pid     = $self->_gpg->clearsign( handles => $handles );
+    my $pid     = $self->_gpg->wrap_call(
+        commands => [ qw{ --clearsign --local-user }, $self->user ],
+        handles => $handles,
+    );
 
     # send message to be crypted to the input
     print $in @msgs;
@@ -339,8 +346,12 @@ sub encrypt_msg {
     # read crypted msg from the output
     my $crypted = do { local $/; <$out> };
     close $out;
+
+    # read errors
+    my $error = do { local $/; <$err> };
     close $err;
- 
+    croak "An error occured: $error" if $error;
+
     # return crypted msg
     waitpid $pid, 0;
     return $crypted;
