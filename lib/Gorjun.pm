@@ -10,7 +10,7 @@ use IO::All;
 use List::Util qw(any);
 use Carp;
 
-my $DEBUG = 1;
+my $DEBUG = 0;
 
 my %ACTIONS = (
     register => {
@@ -54,20 +54,27 @@ my %ACTIONS = (
         has_param => 1,
         params    => [qw(user)],
     },
+
+    quota => {
+        method    => 'get',
+        path      => '/kurjun/rest/quota?',
+        has_param => 1,
+        params    => [qw(user token fix)],
+    }
 );
 
 has host => (
     is       => 'ro',
     isa      => 'Str',
     required => 1,
-    default  => 'http://127.0.0.1'
+    default  => $ENV{GORJUN_HOST}
 );
 
 has port => (
     is       => 'ro',
     isa      => 'Int',
     required => 1,
-    default  => 8080
+    default  => $ENV{GORJUN_PORT}
 );
 
 has user => (
@@ -111,17 +118,23 @@ has _gpg => (
     builder => '_build_gpg',
 );
 
+has token => (
+    is  => 'rw',
+    isa => 'Str',
+    predicate => 'has_token',
+);
+
 sub _build_key {
     my $self = shift;
+    my ( $name, $email, $pass );
 
     # user has a key already: use it
-    my $email = $self->email;
+    $email = $self->email;
     chomp( my $key = `gpg --armor --export $email` );
     return $key if $key && $key ne "";
 
     # don't have a key: create a key
-    my ( $name, $email, $pass ) =
-      ( $self->user, $self->email, $self->gpg_pass_phrase );
+    ( $name, $pass ) = ( $self->user, $self->gpg_pass_phrase );
     my $instructions = <<EOI;
      %echo Generating a default key
      Key-Type: default
@@ -182,11 +195,12 @@ sub get_authid {
     return $res;
 }
 
-sub token {
+sub get_token {
     my $self   = shift;
     my %params = @_;
 
     carp "Token in progress:" if $DEBUG;
+    return $self->token if $self->has_token;
 
     my $info = $ACTIONS{'token'};
 
@@ -195,13 +209,44 @@ sub token {
     croak "Could not get authid" unless $authid;
 
     # sign message with user key, passing pass phrase
-    $params{message} = $self->clearsign_msg( $authid );
+    $params{message} = $self->clearsign_msg($authid);
 
     # send to gorjun
     my $res = $self->send(
         method => $info->{method},
         path   => $info->{path},
         form   => \%params,
+    );
+
+    # save token
+    $self->token($res);
+
+    return $res;
+}
+
+sub has_user {
+    my $self = shift;
+    my $user = shift;
+
+    return $self->get_authid( user => $user ) ? 1 : 0;
+}
+
+sub quota {
+    my $self   = shift;
+    my %params = @_;
+    my $info   = $ACTIONS{'quota'};
+
+    # change path for user
+    croak "Quota needs a user" unless $params{user};
+    $params{token} = $self->get_token( user => $params{'user'} );
+    $params{fix} = 'not empty';
+    $info->{path} .= join '&',
+                     map{  "$_=$params{$_}" } 
+                     keys %params;
+
+    my $res = $self->send(
+        method => $info->{method},
+        path   => $info->{path},
     );
 
     return $res;
@@ -336,7 +381,7 @@ sub clearsign_msg {
     my $err     = $handles->stderr;
     my $pid     = $self->_gpg->wrap_call(
         commands => [ qw{ --clearsign --local-user }, $self->user ],
-        handles => $handles,
+        handles  => $handles,
     );
 
     # send message to be crypted to the input
