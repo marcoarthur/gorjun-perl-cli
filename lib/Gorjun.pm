@@ -60,6 +60,13 @@ my %ACTIONS = (
         path      => '/kurjun/rest/quota?',
         has_param => 1,
         params    => [qw(user token fix)],
+    },
+
+    sign => {
+        method    => 'post',
+        path      => '/kurjun/rest/auth/sign',
+        has_param => 1,
+        params    => [qw(signature token)],
     }
 );
 
@@ -81,14 +88,14 @@ has user => (
     is       => 'rw',
     isa      => 'Str',
     required => 1,
-    default  => $ENV{USER}
+    default  => $ENV{GORJUN_USER}
 );
 
 has email => (
     is       => 'rw',
     isa      => 'Str',
     required => 1,
-    default  => $ENV{EMAIL}
+    default  => $ENV{GORJUN_EMAIL}
 );
 
 has gpg_pass_phrase => (
@@ -119,8 +126,8 @@ has _gpg => (
 );
 
 has token => (
-    is  => 'rw',
-    isa => 'Str',
+    is        => 'rw',
+    isa       => 'Str',
     predicate => 'has_token',
 );
 
@@ -240,9 +247,8 @@ sub quota {
     croak "Quota needs a user" unless $params{user};
     $params{token} = $self->get_token( user => $params{'user'} );
     $params{fix} = 'not empty';
-    $info->{path} .= join '&',
-                     map{  "$_=$params{$_}" } 
-                     keys %params;
+    $info->{path} .= join '&', map { "$_=$params{$_}" }
+      keys %params;
 
     my $res = $self->send(
         method => $info->{method},
@@ -253,8 +259,26 @@ sub quota {
 }
 
 sub sign {
-    carp "Sign: Not implemented yet";
-    return 0;
+    my $self   = shift;
+    my %params = @_;
+
+    # check mandatory params
+    croak "Needs signature and token"
+      unless $params{signature} or $params{token};
+
+    my $info = $ACTIONS{'sign'};
+
+    # gpg signs upload response
+    $params{signature} = $self->_gpg->clearsign_msg( $params{signature} );
+
+    # send sign post
+    my $res = $self->send(
+        method => $info->{method},
+        path   => $info->{path},
+        form   => \%params
+    );
+
+    return $res;
 }
 
 sub upload {
@@ -299,7 +323,7 @@ sub send {
     }
     else {
         my $err = $tx->error;
-        croak "Couldn't send request: $err->{message}";
+        croak "Error sending request, got this: $err->{message}";
         return;
     }
 }
