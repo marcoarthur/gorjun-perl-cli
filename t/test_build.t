@@ -17,8 +17,9 @@ note($gb->status);
 ok my $pid = $gb->start( logs => '/tmp/gorjun.logs' ), 'Started gorjun';
 note($pid);
 
-ok $gb->stop($pid), 'Stopped gorjun';
-ok $gb->clean, 'Cleaned environment';
+ok my $logs = $gb->stop($pid), 'Stopped gorjun';
+note($logs);
 
+ok $gb->clean, 'Cleaned environment';
 
 done_testing();
