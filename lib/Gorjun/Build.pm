@@ -5,8 +5,7 @@ use URI;
 use Carp;
 use Git::Repository;
 use File::Spec::Functions;
-use IO::All;
-use IPC::Run qw( run timeout );
+use IPC::Run qw(start pump finish run timeout io);
 use constant {
     GORJUN_REPO => 'https://github.com/subutai-io/gorjun.git',
     TIMEOUT     => 30,
@@ -54,45 +53,21 @@ has _repo => (
     builder => '_set_repo',
 );
 
+has _bg_proc => (
+    is => 'rw',
+    predicate => '_has_gorjun_running',
+);
+
 sub BUILD {
     my $self = shift;
 
     # checkout the revision required
     $self->_repo->run( checkout => $self->commit, { quiet => 1 } );
 
-    #### BEGIN HACK ####
-    # I hate this! We need this STUPID HACK because STUPID PEOPLE
-    # wrote STUPID program! 
-    
-    my $main = catfile($self->_repo->work_tree, 'main.go');
-    my $backup = "$main.bak";
-    # backup main file
-    io($backup) < io($main);
-
-    # change lines that import libs from github and use local or forked libs
-    my $io = io($main);
-    my @lines;
-    my $proper = join '', $self->_mk_github_path;
-
-    while ( my $line = $io->getline ) {
-        # change import lines on main.go
-        $line =~ s|github.com/subutai-io/gorjun|$proper|mx;
-        push @lines, $line;
-    }
-
-    $io->close;
-    my $contents = join "", @lines;
-    $contents > io($main);
-
-    ### END OF STUPID HACK ###
-    
     # build gorjun binary
     my @make = ("make" , "-C",   $self->_repo->work_tree );
     run \@make, timeout(TIMEOUT) or croak "Couldn't make gorjun";
 
-    #restore from the stupid hack now
-    #io($main) < io($backup);
-    #unlink $backup;
 }
 
 sub _set_repo {
@@ -135,18 +110,36 @@ Branch: %s
 EOF
 }
 
-sub start {
+sub start_gorjun {
     my $self = shift;
     my %args = @_;
 
-    croak "Not implemented yet";
+    # If already started just return the harness
+    return $self->_bg_proc if $self->_has_gorjun_running;
+    
+    # Create a background gorjun process
+    my $gorjun = catfile ( $self->_repo->work_tree, 'gorjun' );
+    croak "Not an executable $gorjun found" unless -e $gorjun; 
+
+    # set command and output
+    my @cmd = ( $gorjun );
+    my ($out, $h);
+
+    eval { 
+        $h = start \@cmd, io( $args{logs}, '<', \$out );
+    };
+    croak "Could not spawn gorjun: $@" if $@;
+
+    # save it for later IPC communication
+    $self->_bg_proc($h);
 }
 
 sub stop {
     my $self = shift;
-    my %args = @_;
 
-    croak "Not implemented yet";
+    croak "Gorjun is not running" unless $self->_has_gorjun_running;
+
+    return ! $self->_bg_proc->signal('INT');
 }
 
 sub clean {
