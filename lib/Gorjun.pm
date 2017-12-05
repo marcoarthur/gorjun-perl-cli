@@ -269,7 +269,7 @@ sub sign {
     my $info = $ACTIONS{'sign'};
 
     # gpg signs upload response
-    $params{signature} = $self->_gpg->clearsign_msg( $params{signature} );
+    $params{signature} = $self->clearsign_msg( $params{signature} );
 
     # send sign post
     my $res = $self->send(
