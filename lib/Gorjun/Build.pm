@@ -5,18 +5,33 @@ use URI;
 use Carp;
 use Git::Repository;
 use File::Spec::Functions;
+use File::Basename;
+use File::Path qw(make_path);
 use IPC::Run qw(start pump finish run timeout io);
 use constant {
     GORJUN_REPO => 'https://github.com/subutai-io/gorjun.git',
     TIMEOUT     => 30,
 };
 
-has local => (
-    is       => 'rw',
-    isa      => 'URI',
-    required => 1,
-    default  => sub { URI->new( catdir( $ENV{HOME}, 'src', 'gorjun' ) ) },
+my %DEFAULT_GORJUN = (
+    db_file     => '/opt/gorjun/data/db/my.db',
+    etc_file    => '/opt/gorjun/etc/gorjun.cfg',
+    net_port    => 8080,
+    store_quota => '2G',
+    store_path  => '/opt/gorjun/data/files',
 );
+
+use constant GORJUN_CONF => <<EOC;
+[db]
+path = %s
+
+[network]
+port = %d
+
+[storage]
+userquota = %s
+path = %s
+EOC
 
 has remote => (
     is       => 'ro',
@@ -54,7 +69,7 @@ has _repo => (
 );
 
 has _bg_proc => (
-    is => 'rw',
+    is        => 'rw',
     predicate => '_has_gorjun_running',
 );
 
@@ -65,7 +80,7 @@ sub BUILD {
     $self->_repo->run( checkout => $self->commit, { quiet => 1 } );
 
     # build gorjun binary
-    my @make = ("make" , "-C",   $self->_repo->work_tree );
+    my @make = ( "make", "-C", $self->_repo->work_tree );
     run \@make, timeout(TIMEOUT) or croak "Couldn't make gorjun";
 
 }
@@ -116,19 +131,23 @@ sub start_gorjun {
 
     # If already started just return the harness
     return $self->_bg_proc if $self->_has_gorjun_running;
-    
+
+    # Configure gorjun
+    $self->_gorjun_conf;
+
     # Create a background gorjun process
-    my $gorjun = catfile ( $self->_repo->work_tree, 'gorjun' );
-    croak "Not an executable $gorjun found" unless -e $gorjun; 
+    my $gorjun = catfile( $self->_repo->work_tree, 'gorjun' );
+    croak "Not an executable $gorjun found" unless -e $gorjun;
 
     # set command and output
-    my @cmd = ( $gorjun );
-    my ($out, $h);
+    my @cmd = ($gorjun);
+    my ( $out, $h );
 
-    eval { 
-        $h = start \@cmd, io( $args{logs}, '<', \$out );
-    };
+    eval { $h = start \@cmd, io( $args{logs}, '<', \$out ); };
     croak "Could not spawn gorjun: $@" if $@;
+
+    # wait one sec for booting time
+    sleep 1;
 
     # save it for later IPC communication
     $self->_bg_proc($h);
@@ -139,13 +158,49 @@ sub stop {
 
     croak "Gorjun is not running" unless $self->_has_gorjun_running;
 
-    return ! $self->_bg_proc->signal('INT');
+    return !$self->_bg_proc->signal('INT');
 }
 
 sub clean {
     my $self = shift;
 
+    # reset the repo for master HEAD
     $self->_repo->run( checkout => 'master', { quiet => 1 } );
+}
+
+# Set gorjun directory structures and conf files
+sub _gorjun_conf {
+    my $self = shift;
+    my %args = @_;
+
+    # set all defaults left unset
+    for ( keys %DEFAULT_GORJUN ) {
+        $args{$_} //= $DEFAULT_GORJUN{$_};
+    }
+
+    # make etc paths for conf file
+    my $etc = dirname( $args{etc_file} );
+    make_path $etc or croak "Can't make conf path for gorjun" unless -d $etc;
+
+    # make db file path
+    my $db = dirname( $args{db_file} );
+    make_path $db or croak "Can't make db path for gorjun" unless -d $db;
+
+    # make path for store path
+    make_path $args{store_path}
+      or croak "Can't make store path for gorjun"
+      unless -d $args{store_path};
+
+    # write config file
+    unless ( -e $args{etc_file} ) { 
+        my $cfg = sprintf GORJUN_CONF,
+          @args{qw( db_file net_port store_quota store_path )};
+        open( my $fh, '>', $args{etc_file} ) or croak "Can't create conf file";
+        print $fh $cfg;
+        close $fh;
+    }
+
+    return 1;
 }
 
 # run checks for necessary build tools

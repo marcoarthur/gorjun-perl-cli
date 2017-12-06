@@ -2,7 +2,6 @@ package Gorjun;
 
 use Moose;
 use Mojo::UserAgent;
-use Data::Dumper;
 use GnuPG::Interface;
 use GnuPG::Handles;
 use IO::Handle;
@@ -335,27 +334,59 @@ sub base_url {
 
 #TODO: fake slow connection
 sub send_slow {
+    my $self = shift;
+    my %args = @_;
 
-    # Build a normal transaction
-    #    my $ua = Mojo::UserAgent->new;
-    #    my $tx = $ua->build_tx( GET => 'https://ubatuba:8080/' );
-    #
-    #    # Prepare body
-    #    my $body = 'Hello World!';
-    #    $tx->req->headers->content_length( length $body );
-    #
-    #    # Start writing directly with a drain callback
-    #    my $drain;
-    #    $drain = sub {
-    #        my $content = shift;
-    #        my $chunk = substr $body, 0, 1, '';
-    #        $drain = undef unless length $body;
-    #        $content->write( $chunk, $drain );
-    #    };
-    #    $tx->req->content->$drain;
-    #
-    #    # Process transaction
-    #    $tx = $ua->start($tx);
+    my $url     = $self->base_url . $args{'path'};
+    my $method  = $args{'method'};
+    my $form    = $args{'form'};
+
+    my $tx_type = $method eq 'get' ? 'GET' : 'POST';
+    my $tx = $self->ua->build_tx( $tx_type => $url );
+
+    $tx->req->headers->header( 'Content-Type' => 'multipart/form-data' )
+      if $tx_type eq 'POST';
+
+    my ($body, $len);
+    if ( $method eq 'POST' ) {
+        #TODO: set body data
+        $body = $form;
+
+        #TODO: set length of body
+        $len += length($_) for keys %$form;
+        $len += length($_) for values %$form;
+    }
+    else { 
+        $body = 'Some body here';
+        $len  = length $body;
+    } 
+
+    # total time to expend, giving rate per unit to sleep
+    my $rate = $args{'total_time'} / $len;
+
+    $tx->req->headers->content_length( $len );
+
+    # the way we chunk read body to transfer
+    my $drain = sub {
+        my $content = shift;
+
+        my $chunk = substr $body, 0, '';
+        sleep $rate;
+        my $drain = undef unless length $body;
+        $content->write( $chunk, $drain );
+    };
+
+    $tx->req->content->$drain;
+    $tx = $self->ua->start($tx);
+
+    if ( $tx->success ) {
+        return $tx->res->body;
+    }
+    else {
+        my $err = $tx->error;
+        croak "Error sending request, got this: $err->{message}";
+        return;
+    }
 }
 
 sub _build_gpg {

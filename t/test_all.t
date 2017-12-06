@@ -3,7 +3,7 @@ use warnings;
 use Test::More;
 use URI;
 use File::Temp qw/ :POSIX /;
-use constant FSIZE => 4000;
+use constant FSIZE => 40;
 use lib qw(./lib);
 
 BEGIN {
@@ -14,15 +14,16 @@ BEGIN {
     $ENV{MOJO_USERAGENT_DEBUG} //= 0; # Set to see requests
 }
 
+my $tmp = create_file();
+
 use_ok('Gorjun::Build');
 use_ok('Gorjun');
 
 # build gorjun
 ok my $gb = Gorjun::Build->new( 
-    local => URI->new('/tmp/test'),
     remote => URI->new('https://github.com/marcoarthur/gorjun.git'),
     branch => 'dev', 
-    commit => '4d52af7d847f1464c4c072a0552d457186474b12'),
+    commit => 'HEAD'),
 'Created a gorjun build';
 note($gb->status);
 
@@ -44,6 +45,7 @@ sub create_file {
 my $g = Gorjun->new( gpg_pass_phrase => 'pantano' );
 
 my $test_info = <<EOF;
+User data used for testing:
 
 User Name: %s
 User Email: %s
@@ -55,8 +57,7 @@ EOF
 note( sprintf $test_info, ( $g->user, $g->email, $g->key ) );
 
 SKIP: {
-    eval { $g->has_user( $g->user ) };
-    skip "User already register ", 1 if $@;
+    skip "User already register ", 1 if $g->has_user( $g->user );
 
     ok my $res = $g->register( name => $ENV{GORJUN_USER}, key => $KEY ),
       "Register was done";
@@ -72,20 +73,18 @@ ok my $token = $g->get_token( user => "$ENV{GORJUN_USER}" ), "Token got";
 note($token);
 
 # test uploading
-my $tmp = create_file();
 ok my $upload = $g->upload(
     type  => 'raw',
     file  => { file => $tmp },
     token => $token
   ),
   "Upload done";
-unlink $tmp;
 note($upload);
 
+# test signing upload
 ok $g->sign( token => $token, signature => $upload ), 'Sign done';
 
-ok $gb->stop(), 'Stopped gorjun';
-
-ok $gb->clean, 'Cleaned environment';
-
 done_testing();
+
+# This kills gorjun and clean environment
+END { $gb->stop; $gb->clean;  unlink $tmp; }
