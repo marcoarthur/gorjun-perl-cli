@@ -11,3 +11,4 @@ requires 'Test::More', '1.302056';
 requires 'constant', '1.33';
 requires 'lib', '0.63';
 requires 'Git::Repository';
+requires 'URI';
