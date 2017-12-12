@@ -15,7 +15,7 @@ use constant {
 
 my %DEFAULT_GORJUN = (
     db_file     => '/opt/gorjun/data/db/my.db',
-    etc_file    => '/opt/gorjun/etc/gorjun.cfg',
+    etc_file    => '/opt/gorjun/etc/gorjun.gcfg',
     net_port    => 8080,
     store_quota => '2G',
     store_path  => '/opt/gorjun/data/files',
