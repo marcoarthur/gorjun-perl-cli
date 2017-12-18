@@ -288,16 +288,21 @@ sub upload {
     carp "Upload in progress" if $DEBUG;
 
     croak "Upload needs a type: raw | apt | template" unless $params{type};
+    croak "Upload requires token" unless $params{token};
 
     # change placeholder in path and delete type from params
     $info->{path} =~ s/\(:type\)/$params{type}/mx;
     delete $params{type};
 
-    # $DB::single = 1;
+    # token goes to http header
+    my $header = { token => $params{token} };
+    delete $params{token};
+
     my $res = $self->send(
         method => $info->{method},
         path   => $info->{path},
-        form   => \%params
+        form   => \%params,
+        header => $header
     );
 
     return $res;
@@ -310,7 +315,10 @@ sub send {
     my $url     = $self->base_url . $args{'path'};
     my $method  = $args{'method'};
     my $form    = $args{'form'};
-    my $headers = { 'Content-Type' => 'multipart/form-data' };
+
+    # Use any other headers passed
+    my $h       = $args{'header'} || {};
+    my $headers = { 'Content-Type' => 'multipart/form-data', %$h };
 
     my $tx =
         $form
