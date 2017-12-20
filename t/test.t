@@ -68,4 +68,10 @@ note($upload);
 
 ok $g->sign( token => $token, signature => $upload ), 'Sign done';
 
-done_testing();
+# shutdown server if we are code covering
+ok !eval { $g->send( method => 'get', path => '/kurjun/rest/shutdown' ) },
+  "No response"
+  if $ENV{GORJUN_COVER};
+
+# finish test
+done_testing() unless $ENV{GORJUN_COVER};
