@@ -8,6 +8,7 @@ use File::Spec::Functions;
 use File::Basename;
 use File::Path qw(make_path);
 use IPC::Run qw(start pump finish run timeout io);
+use File::chdir;
 use constant {
     GORJUN_REPO => 'https://github.com/subutai-io/gorjun.git',
     TIMEOUT     => 30,
@@ -151,6 +152,34 @@ sub start_gorjun {
 
     # save it for later IPC communication
     $self->_bg_proc($h);
+}
+
+sub run_test_mode {
+    my $self = shift;
+    my %args = @_;
+
+    # Create a background test process
+    #
+    # set go test command
+    my @cmd = qw( go test );
+    # add the profile file
+    push @cmd, qq(-coverprofile=$args{file});
+    # add the test to be run
+    push @cmd, qq(-run=TestMain);
+    # add the module to create coverage
+    my $dir = catdir( $self->_mk_github_path, $args{module} );
+    # TODO: strip out forked owner and put back subutai-io
+    $dir =~ s/marcoarthur/subutai-io/mx;
+    push @cmd, qq(-coverpkg=) . $dir;
+
+    # change CWD to directory of repository
+    local $CWD = $self->_repo->work_tree;
+
+    # run gorjun with coverage metrics on
+    my $h = start \@cmd || croak "Could not spawn go test: $@";
+
+    # wait for booting time
+    sleep 1;
 }
 
 sub stop {
