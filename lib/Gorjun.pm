@@ -245,7 +245,7 @@ sub quota {
     # change path for user
     croak "Quota needs a user" unless $params{user};
     $params{token} = $self->get_token( user => $params{'user'} );
-    $params{fix} = 'not empty';
+    $params{fix} = 'empty';
     $info->{path} .= join '&', map { "$_=$params{$_}" }
       keys %params;
 
@@ -547,7 +547,7 @@ And all of them are completed with C<send()> interface. Example:
  # list all raw files
  $g->send( 
         method => 'get'
-        path   => '/kurjun/rest/raw/download'
+        path   => '/kurjun/rest/raw/list'
  );
 
 =head2 BUGS AND KNOWN ISSUES
