@@ -9,9 +9,12 @@ use File::Basename;
 use File::Path qw(make_path);
 use IPC::Run qw(start pump finish run timeout io);
 use File::chdir;
+use File::Slurp;
+use List::Util qw(all);
 use constant {
     GORJUN_REPO => 'https://github.com/subutai-io/gorjun.git',
     TIMEOUT     => 30,
+    BOOT        => 3,
 };
 
 my %DEFAULT_GORJUN = (
@@ -147,8 +150,8 @@ sub start_gorjun {
     eval { $h = start \@cmd, io( $args{logs}, '<', \$out ); };
     croak "Could not spawn gorjun: $@" if $@;
 
-    # wait one sec for booting time
-    sleep 1;
+    # wait for booting time
+    sleep BOOT;
 
     # save it for later IPC communication
     $self->_bg_proc($h);
@@ -158,19 +161,26 @@ sub run_test_mode {
     my $self = shift;
     my %args = @_;
 
+    # Configure gorjun
+    $self->_gorjun_conf;
+
     # Create a background test process
     #
     # set go test command
     my @cmd = qw( go test );
+
     # add the profile file
     push @cmd, qq(-coverprofile=$args{file});
+
     # add the test to be run
     push @cmd, qq(-run=TestMain);
+
     # add the module to create coverage
-    my $dir = catdir( $self->_mk_github_path, $args{module} );
-    # TODO: strip out forked owner and put back subutai-io
-    $dir =~ s/marcoarthur/subutai-io/mx;
-    push @cmd, qq(-coverpkg=) . $dir;
+    push @cmd, qq(-coverpkg=) . $args{module};
+
+    if ( $args{ mode } ) {
+        push @cmd, qq(-covermode=$args{mode});
+    }
 
     # change CWD to directory of repository
     local $CWD = $self->_repo->work_tree;
@@ -178,8 +188,11 @@ sub run_test_mode {
     # run gorjun with coverage metrics on
     my $h = start \@cmd || croak "Could not spawn go test: $@";
 
+    # save process for IPC later
+    $self->_bg_proc( $h );
+
     # wait for booting time
-    sleep 1;
+    sleep BOOT;
 }
 
 sub stop {
@@ -195,6 +208,45 @@ sub clean {
 
     # reset the repo for master HEAD
     $self->_repo->run( checkout => 'master', { quiet => 1 } );
+}
+
+sub report_code_coverage {
+    my $self = shift;
+    my %args = @_;
+    my $all  = 'cover_all.out';
+
+    # get cover files
+    local $CWD = $self->_repo->work_tree;    # change to test directory
+    unlink $all if -e $all;                  # exclude previous cover all file
+    opendir( my $dh, $CWD ) || croak "Can't open $CWD";
+    my @cover_files = grep { /.*\.out$/ } readdir($dh);
+    closedir($dh);
+    croak "No files to consolidate" unless @cover_files;
+
+    # consolidate all output files
+    my ( @headers, @lines );
+
+    for my $f ( @cover_files ) {
+        my @l = read_file($f);
+        push @headers, shift @l; # get the headers
+        push @lines, @l;         # save everything else
+    }
+
+    # check all same header (same test to merge)
+    my $example = $headers[0];
+    croak "Not all same test type" unless all { $_ eq $example } @headers;
+
+    # write results to file
+    unshift @lines, $example;
+    write_file( $all, @lines ) || croak "Can't write results";
+
+    # local choose: generates html for files and open default browser for viz
+    qx( go tool cover -html=$all ) if $args{show} eq 'local';
+
+    # not instructed to keep: clean cover files
+    unless ( $args{ keep } ) {
+        unlink $_ for (@cover_files, $all);
+    }
 }
 
 # Set gorjun directory structures and conf files
@@ -221,7 +273,7 @@ sub _gorjun_conf {
       unless -d $args{store_path};
 
     # write config file
-    unless ( -e $args{etc_file} ) { 
+    unless ( -e $args{etc_file} ) {
         my $cfg = sprintf GORJUN_CONF,
           @args{qw( db_file net_port store_quota store_path )};
         open( my $fh, '>', $args{etc_file} ) or croak "Can't create conf file";

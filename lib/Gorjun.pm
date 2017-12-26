@@ -37,7 +37,7 @@ my %ACTIONS = (
         method    => 'get',
         path      => '/kurjun/rest/(:type)/info',
         has_param => 1,
-        params    => [qw( id name owner version verified )],
+        params    => [qw( template apt raw )],
     },
 
     download => {
