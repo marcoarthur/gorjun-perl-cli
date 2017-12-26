@@ -330,7 +330,9 @@ sub send {
     }
     else {
         my $err = $tx->error;
-        croak "Error sending request, got this: $err->{message}";
+        my $msg = "Error sending request to " . $tx->req->url;
+        $msg   .= " Got this: $err->{message}\n";
+        croak $msg;
         return;
     }
 }
