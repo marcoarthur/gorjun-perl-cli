@@ -59,7 +59,7 @@ for my $module (@COVER) {
         warn "*" x 80;
 
         # Shut down server manually
-        `curl http://$ENV{GORJUN_HOST}:$ENV{GORJUN_PORT}/kurjun/rest/shutdown`;
+        `curl -s http://$ENV{GORJUN_HOST}:$ENV{GORJUN_PORT}/kurjun/rest/shutdown`;
     }
 
     # waits gorjun shutdown properly
