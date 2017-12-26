@@ -54,19 +54,19 @@ for my $module (@COVER) {
     # error encountered: report it and shutdown manually
     if ( $@ ) { 
         warn "*" x 80;
-        warn "* Problems in test: $@";
         warn "* Cound't finish all tests to cover module: $name";
+        warn "* Test gave: $@";
         warn "*" x 80;
 
         # Shut down server manually
         `curl http://$ENV{GORJUN_HOST}:$ENV{GORJUN_PORT}/kurjun/rest/shutdown`;
-
-        # remove all files and database from gorjun
-        rmtree(GORJUN_PATH) if -d GORJUN_PATH;
     }
 
     # waits gorjun shutdown properly
     sleep SHUTDOWN;
+
+    # remove all files and database from gorjun
+    rmtree(GORJUN_PATH) if -d GORJUN_PATH;
 }
 
 # collect coverage stats and create a report
