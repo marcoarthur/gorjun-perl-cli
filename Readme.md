@@ -6,6 +6,28 @@ Gorjun - Perl Client to [gorjun daemon](https://github.com/subutai-io/gorjun)
 
 Version 0.1
 
+# INSTALLATION
+
+On debian the easy way is:
+
+    # install cpanm an local::lib
+    sudo apt-get install cpanminus liblocal-lib-perl
+    # clone repo
+    git clone https://github.com/marcoarthur/gorjun-perl-cli.git
+    # install dependencies
+    cd gorjun-perl-cli
+    cpanm --installdeps .
+
+For any distro just read about installing 
+[cpanm](https://github.com/miyagawa/cpanminus) 
+and [local lib](https://metacpan.org/pod/local::lib)
+then run:
+
+    git clone https://github.com/marcoarthur/gorjun-perl-cli.git
+    # install dependencies
+    cd gorjun-perl-cli
+    cpanm --installdeps .
+
 # SYNOPSIS
 
     my $g = Gorjun->new(
@@ -51,7 +73,7 @@ And all of them are completed with `send()` interface. Example:
     # list all raw files
     $g->send( 
            method => 'get'
-           path   => '/kurjun/rest/raw/download'
+           path   => '/kurjun/rest/raw/list'
     );
 
 ## BUGS AND KNOWN ISSUES

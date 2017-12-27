@@ -483,6 +483,28 @@ Gorjun - Perl Client to L<gorjun daemon|https://github.com/subutai-io/gorjun>
 
 Version 0.1
 
+=head1 INSTALLATION
+
+On debian the easy way is:
+
+ # install cpanm an local::lib
+ sudo apt-get install cpanminus liblocal-lib-perl
+ # clone repo
+ git clone https://github.com/marcoarthur/gorjun-perl-cli.git
+ # install dependencies
+ cd gorjun-perl-cli
+ cpanm --installdeps .
+
+For any distro just read about installing 
+L<cpanm|https://github.com/miyagawa/cpanminus> 
+and L<local lib|https://metacpan.org/pod/local::lib>
+then run:
+
+ git clone https://github.com/marcoarthur/gorjun-perl-cli.git
+ # install dependencies
+ cd gorjun-perl-cli
+ cpanm --installdeps .
+
 =head1 SYNOPSIS
 
  my $g = Gorjun->new(
