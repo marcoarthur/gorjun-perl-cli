@@ -30,7 +30,7 @@ note( $gb->status );
 my @COVER = do {
 
     # get from go list all packages used for gorjun
-    my $proj = join '', $gb->_mk_github_path;
+    my $proj = $gb->_mk_github_path;
     map { chomp; $_ }
       grep { /^github/ } qx/go list -f '{{ join .Imports "\\n" }}' $proj/;
 };
@@ -48,25 +48,35 @@ for my $module (@COVER) {
         mode   => 'count',
     );
 
-    # run all tests in t/test.t
-    my $return = do 't/test.t';
+    # run all tests in t/test.t in parallel
+    my $child = fork;
+    if ( defined $child && $child == 0 ) { 
+        my $return = do 't/test.t';
 
-    # error encountered: report it and shutdown manually
-    if ( $@ ) { 
-        warn "*" x 80;
-        warn "* Cound't finish all tests to cover module: $name";
-        warn "* Test gave: $@";
-        warn "*" x 80;
+        # error encountered: report it and shutdown manually
+        if ( $@ ) { 
+            warn "*" x 80;
+            warn "* Cound't finish all tests to cover module: $name";
+            warn "* Test gave: $@";
+            warn "*" x 80;
 
-        # Shut down server manually
-        `curl -s http://$ENV{GORJUN_HOST}:$ENV{GORJUN_PORT}/kurjun/rest/shutdown`;
+            # Shut down server manually
+            `curl -s http://$ENV{GORJUN_HOST}:$ENV{GORJUN_PORT}/kurjun/rest/shutdown`;
+        }
+
+        # waits gorjun shutdown properly
+        sleep SHUTDOWN;
+
+        # remove all files and database from gorjun
+        #rmtree(GORJUN_PATH) if -d GORJUN_PATH;
+
+        exit;
     }
 
-    # waits gorjun shutdown properly
-    sleep SHUTDOWN;
+}
 
-    # remove all files and database from gorjun
-    rmtree(GORJUN_PATH) if -d GORJUN_PATH;
+for (1 .. scalar @COVER ) { 
+    my $pid = wait();
 }
 
 # collect coverage stats and create a report

@@ -190,12 +190,12 @@ sub get_authid {
     my $info   = $ACTIONS{'authid'};
 
     # change user in url and delete this in params
-    $info->{path} =~ s/\(:user\)/$params{user}/mx;
+    my $path = $info->{path} =~ s/\(:user\)/$params{user}/rmx;
     delete $params{user};
 
     my $res = $self->send(
         method => $info->{method},
-        path   => $info->{path},
+        path   => $path,
     );
 
     return $res;
@@ -246,12 +246,13 @@ sub quota {
     croak "Quota needs a user" unless $params{user};
     $params{token} = $self->get_token( user => $params{'user'} );
     $params{fix} = 'empty';
-    $info->{path} .= join '&', map { "$_=$params{$_}" }
+    my $path = $info->{path};
+    $path .= join '&', map { "$_=$params{$_}" }
       keys %params;
 
     my $res = $self->send(
         method => $info->{method},
-        path   => $info->{path},
+        path   => $path,
     );
 
     return $res;

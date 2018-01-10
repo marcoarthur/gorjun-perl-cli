@@ -60,13 +60,11 @@ note($token);
 
 # test uploading
 my %UPLOADS = (
-    raw => { file => create_file(size => 1) },
+    raw      => { file => create_file( size => 1 ) },
     template => {
-        file =>
-          't/Data/abdysamat-apache-subutai-template_4.0.0_amd64.tar.gz',
+        file => 't/Data/abdysamat-apache-subutai-template_4.0.0_amd64.tar.gz',
     },
-    apt =>
-      { file => 't/Data/winff_1.5.5-1_all.deb' },
+    apt => { file => 't/Data/winff_1.5.5-1_all.deb' },
 );
 
 my @uploads;
@@ -81,8 +79,6 @@ while ( my ( $type, $file ) = each %UPLOADS ) {
         token => $token
       ), "$type upload done";
     note($upload);
-
-    sleep 3; # some reason gorjun needs time to save to file
 
     # sign uploaded file
     ok $g->sign( token => $token, signature => $upload ), 'Sign done';
