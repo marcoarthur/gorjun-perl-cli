@@ -2,11 +2,12 @@ package Gorjun;
 
 use Moose;
 use Mojo::UserAgent;
+use Mojo::IOLoop;
 use GnuPG::Interface;
 use GnuPG::Handles;
 use IO::Handle;
 use IO::All;
-use List::Util qw(any);
+use List::Util qw(any reduce);
 use Carp;
 
 my $DEBUG = 0;
@@ -319,6 +320,33 @@ sub send {
     # Use any other headers passed
     my $h       = $args{'header'} || {};
     my $headers = { 'Content-Type' => 'multipart/form-data', %$h };
+
+    # concurrent requests
+    my $n = $args{'concurrent_reqs'};
+
+    if ( defined $n && $n > 1 ) {
+        my @res;
+
+        my $delay = Mojo::IOLoop->delay;
+
+        for  ( 1..$n ) { 
+            my $end = $delay->begin;
+
+            $self->ua->$method(
+                $url => sub {
+                    my ( $ua, $tx ) = @_;
+                    push @res, $tx->res->body; # save response
+                    $end->();
+                }
+            );
+        }
+
+        # wait all send requests complete
+        $delay->wait;
+
+        my $sum = reduce { $a + length $b } 0, @res;
+        return wantarray ? @res : $sum;
+    }
 
     my $tx =
         $form
