@@ -69,7 +69,7 @@ my %UPLOADS = (
       { file => 't/Data/winff_1.5.5-1_all.deb' },
 );
 
-my @uploads;
+my %uploads;
 
 while ( my ( $type, $file ) = each %UPLOADS ) {
     my ($res, $upload);
@@ -92,7 +92,22 @@ while ( my ( $type, $file ) = each %UPLOADS ) {
     "Listing $type repository";
     note($res);
 
-    push @uploads, $upload; # save upload id's
+    $uploads{$upload} = $type; # save upload id's and type
+}
+
+# Download the uploaded files
+while ( my ( $k, $v ) = each %uploads ) {
+    next if $v eq 'apt'; # apt files can't be found by id
+
+    my $path = sprintf '/kurjun/rest/%s/download?id=%s', ($v, $k);
+    note($path);
+
+    ok $res = $g->send(
+        method => 'get',
+        path   => $path,
+        concurrent_reqs => 4,
+    ), "Download file id $k";
+    note (length $res);
 }
 
 # Share repositories
